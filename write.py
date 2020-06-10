@@ -5,16 +5,8 @@ import os
 import secrets
 import flask
 import werkzeug
-import flask_caching
 import pymysql
 
-
-cache_info = {
-    'CACHE_TYPE': os.getenv('CACHE_TYPE', 'simple'),
-    'CACHE_REDIS_HOST': os.getenv('CACHE_REDIS_HOST', 'localhost'),
-    'CACHE_REDIS_PORT': int(os.getenv('CACHE_REDIS_PORT', '6379')),
-    'CACHE_REDIS_PASSWORD': os.getenv('CACHE_REDIS_PASSWORD', 'password')
-}
 
 db_info = {
     'host': os.getenv('DB_HOST', 'localhost'),
@@ -26,7 +18,6 @@ db_info = {
 
 
 app = flask.Flask(__name__)
-cache = flask_caching.Cache(app, config=cache_info)
 
 
 def inject_db(func):
@@ -50,18 +41,6 @@ def inject_db(func):
 
 
 @inject_db
-def get_post(post_id, **kwargs):
-    db_conn: pymysql.Connection = kwargs['db']
-    with db_conn.cursor() as cur:
-        sql = 'select * from posts where id = %s'
-        cur.execute(sql, (post_id,))
-        ret = cur.fetchone()
-        if not ret:
-            raise werkzeug.exceptions.NotFound(f'Post {post_id} not found')
-        return flask.jsonify(**ret)
-
-
-@inject_db
 def create_post(title, content, **kwargs):
     db_conn: pymysql.Connection = kwargs['db']
     id_ = secrets.token_hex(16)
@@ -80,18 +59,14 @@ def update_post(id_, title, content, **kwargs):
         return {'id': id_}
 
 
-@app.route('/posts/<string:post_id>', methods=['GET', 'PUT'])
+@app.route('/posts/<string:post_id>', methods=['PUT'])
 def post(post_id):
-    method = flask.request.method
-    if method == 'GET':
-        return get_post(post_id)
-    else:
-        title = flask.request.json.get('title')
-        content = flask.request.json.get('content')
-        if None in (title, content):
-            raise werkzeug.exceptions.BadRequest('title and content is required')
-        update_post(post_id, title, content)
-        return werkzeug.wrappers.Response(status=204)
+    title = flask.request.json.get('title')
+    content = flask.request.json.get('content')
+    if None in (title, content):
+        raise werkzeug.exceptions.BadRequest('title and content is required')
+    update_post(post_id, title, content)
+    return werkzeug.wrappers.Response(status=204)
 
 
 @app.route('/posts', methods=['POST'])

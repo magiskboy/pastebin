@@ -2,3 +2,4 @@
 venv/
 Dockerfile
 docker-compose.yml
+schema.sql
