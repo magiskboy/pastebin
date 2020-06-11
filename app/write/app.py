@@ -6,7 +6,12 @@ import secrets
 import flask
 import werkzeug
 import pymysql
+import celery
 
+
+schedule = celery.Celery(__name__,
+                         broker=os.getenv('CELERY_BROKER_URL', 'pyamqp://'),
+                         backend=os.getenv('CELERY_RESULT_BACKEND', 'rpc://'))
 
 db_info = {
     'host': os.getenv('DB_HOST', 'localhost'),
@@ -41,13 +46,11 @@ def inject_db(func):
 
 
 @inject_db
-def create_post(title, content, **kwargs):
+def create_post(id_, title, content, **kwargs):
     db_conn: pymysql.Connection = kwargs['db']
-    id_ = secrets.token_hex(16)
     with db_conn.cursor() as cur:
         sql = 'insert into posts(id, title, content) values (%s, %s, %s)'
         cur.execute(sql, (id_, title, content))
-        return {'id': id_}
 
 
 @inject_db
@@ -57,6 +60,12 @@ def update_post(id_, title, content, **kwargs):
         sql = 'update posts set title = %s, content = %s where id = %s'
         cur.execute(sql, (title, content, id_))
         return {'id': id_}
+
+
+@schedule.task(bind=True)
+def async_create_post(self, **kwargs):
+    kwargs.update({'id_': self.request.id})
+    create_post(**kwargs)
 
 
 @app.route('/posts/<string:post_id>', methods=['PUT'])
@@ -74,4 +83,5 @@ def new_post():
     data = flask.request.json
     if 'title' not in data or 'content' not in data:
         raise werkzeug.exceptions.BadRequest('title and content is required')
-    return create_post(**data)
+    task = async_create_post.delay(**data)
+    return {'id': task.id}

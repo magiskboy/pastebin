@@ -4,16 +4,8 @@ import logging
 import os
 import flask
 import werkzeug
-import flask_caching
 import pymysql
 
-
-cache_info = {
-    'CACHE_TYPE': os.getenv('CACHE_TYPE', 'simple'),
-    'CACHE_REDIS_HOST': os.getenv('CACHE_REDIS_HOST', 'localhost'),
-    'CACHE_REDIS_PORT': int(os.getenv('CACHE_REDIS_PORT', '6379')),
-    'CACHE_REDIS_PASSWORD': os.getenv('CACHE_REDIS_PASSWORD', 'password')
-}
 
 db_info = {
     'host': os.getenv('DB_HOST', 'localhost'),
@@ -25,7 +17,6 @@ db_info = {
 
 
 app = flask.Flask(__name__)
-cache = flask_caching.Cache(app, config=cache_info)
 
 
 def inject_db(func):
@@ -48,7 +39,6 @@ def inject_db(func):
     return decorator
 
 
-@cache.cached(timeout=50)
 @inject_db
 def get_post(post_id, **kwargs):
     db_conn: pymysql.Connection = kwargs['db']
@@ -62,14 +52,26 @@ def get_post(post_id, **kwargs):
 
 
 @inject_db
-def update_post(id_, title, content, **kwargs):
+def search_post(post_title, page, per_page, **kwargs):
     db_conn: pymysql.Connection = kwargs['db']
     with db_conn.cursor() as cur:
-        sql = 'update posts set title = %s, content = %s where id = %s'
-        cur.execute(sql, (title, content, id_))
-        return {'id': id_}
+        sql = "select id, title from posts where title like '%%%s%%' limit %s, %s"
+        cur.execute(sql % (post_title, (page-1)*per_page, page*per_page))
+        ret = cur.fetchall()
+        return flask.jsonify(*ret)
 
 
 @app.route('/posts/<string:post_id>', methods=['GET'])
-def post(post_id):
+def get_post_api(post_id):
     return get_post(post_id)
+
+
+@app.route('/posts', methods=['GET'])
+def search_post_api():
+    args = flask.request.args
+    post_title = args.get('title', '')
+    page = int(args.get('page', '1'))
+    per_page = int(args.get('per_page', 10))
+    if not (page > 0 and per_page > 0):
+        raise werkzeug.exceptions.BadRequest('page and per_page must be more than 0')
+    return search_post(post_title, page, per_page)
