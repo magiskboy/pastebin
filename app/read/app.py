@@ -51,27 +51,6 @@ def get_post(post_id, **kwargs):
         return flask.jsonify(**ret)
 
 
-@inject_db
-def search_post(post_title, page, per_page, **kwargs):
-    db_conn: pymysql.Connection = kwargs['db']
-    with db_conn.cursor() as cur:
-        sql = "select id, title from posts where title like '%%%s%%' limit %s, %s"
-        cur.execute(sql % (post_title, (page-1)*per_page, page*per_page))
-        ret = cur.fetchall()
-        return flask.jsonify(*ret)
-
-
 @app.route('/posts/<string:post_id>', methods=['GET'])
 def get_post_api(post_id):
     return get_post(post_id)
-
-
-@app.route('/posts', methods=['GET'])
-def search_post_api():
-    args = flask.request.args
-    post_title = args.get('title', '')
-    page = int(args.get('page', '1'))
-    per_page = int(args.get('per_page', 10))
-    if not (page > 0 and per_page > 0):
-        raise werkzeug.exceptions.BadRequest('page and per_page must be more than 0')
-    return search_post(post_title, page, per_page)

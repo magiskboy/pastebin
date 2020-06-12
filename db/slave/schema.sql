@@ -6,4 +6,3 @@ create table if not exists posts (
     updated_at timestamp default current_timestamp on update current_timestamp
 );
 create unique index posts_id_idx on posts(id) using btree;
-create unique index posts_title_idx on posts(title) using btree;
